@@ -238,7 +238,7 @@ namespace MachineStatusUpdate.Controllers
                         ws.Row(currentRow).Height = rowHeight;
 
                         ws.Cell(currentRow, 1).Value = rowIndex;
-                        ws.Cell(currentRow, 2).Value = item.SVNCode; // ✅ Sửa từ item.Code → item.SVNCode
+                        ws.Cell(currentRow, 2).Value = item.SVNCode;
                         ws.Cell(currentRow, 3).Value = item.Operation;
                         ws.Cell(currentRow, 4).Value = item.ISS_Code;
                         ws.Cell(currentRow, 5).Value = item.ErrorName;
