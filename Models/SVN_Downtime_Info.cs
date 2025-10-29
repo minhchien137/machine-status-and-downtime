@@ -31,6 +31,9 @@ namespace MachineStatusUpdate.Models
         [Column("ISS-Code")]
         public string? ISS_Code { get; set; }
 
+        public string? ErrorName { get; set; }
+
+        [Column("SVNCode")]
         public string? SVNCode { get; set; }
 
     }

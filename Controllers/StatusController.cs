@@ -62,7 +62,26 @@ namespace MachineStatusUpdate.Controllers
         {
             try
             {
-                var query = _context.SVN_Downtime_Infos.AsQueryable();
+                // JOIN với bảng Reasons để lấy ErrorName
+                var query = from d in _context.SVN_Downtime_Infos
+                            join r in _context.SVN_Downtime_Reasons
+                            on d.ISS_Code equals r.Reason_Code into reasons
+                            from r in reasons.DefaultIfEmpty()
+                            select new SVN_Downtime_Info
+                            {
+                                Id = d.Id,
+                                Code = d.Code,
+                                SVNCode = d.SVNCode,
+                                Name = d.Name,
+                                Operation = d.Operation,
+                                State = d.State,
+                                ISS_Code = d.ISS_Code,
+                                ErrorName = r != null ? r.Reason_Name : "", // Lấy Reason_Name
+                                Description = d.Description,
+                                Datetime = d.Datetime,
+                                EstimateTime = d.EstimateTime,
+                                Image = d.Image
+                            };
 
                 // ----- Filters -----
                 if (!string.IsNullOrWhiteSpace(operation))
@@ -88,7 +107,6 @@ namespace MachineStatusUpdate.Controllers
                     .ThenBy(x => x.Operation)
                     .Skip((page - 1) * pageSize)
                     .Take(pageSize)
-                    .AsNoTracking()
                     .ToListAsync();
 
                 var totalPages = (int)Math.Ceiling((double)totalRecords / pageSize);
@@ -131,6 +149,181 @@ namespace MachineStatusUpdate.Controllers
                 return View(new List<SVN_Downtime_Info>());
             }
         }
+
+
+
+        //  Xuat excel DowntimeList
+
+
+        // Xuất Excel DowntimeList với ErrorName
+        public async Task<IActionResult> ExportDowntimeListToExcel(
+     string operation = "",
+     string fromDate = "",
+     string toDate = "")
+        {
+            try
+            {
+                // JOIN với bảng Reasons để lấy ErrorName
+                var query = from d in _context.SVN_Downtime_Infos
+                            join r in _context.SVN_Downtime_Reasons
+                            on d.ISS_Code equals r.Reason_Code into reasons
+                            from r in reasons.DefaultIfEmpty()
+                            select new SVN_Downtime_Info
+                            {
+                                Id = d.Id,
+                                SVNCode = d.SVNCode,
+                                Code = d.Code,
+                                Name = d.Name,
+                                Operation = d.Operation,
+                                State = d.State,
+                                ISS_Code = d.ISS_Code,
+                                ErrorName = r != null ? r.Reason_Name : "",
+                                Description = d.Description,
+                                Datetime = d.Datetime,
+                                EstimateTime = d.EstimateTime,
+                                Image = d.Image
+                            };
+
+                // Apply filters
+                if (!string.IsNullOrWhiteSpace(operation))
+                {
+                    var op = operation.Trim();
+                    query = query.Where(x => x.Operation != null && x.Operation.Contains(op));
+                }
+
+                if (!string.IsNullOrEmpty(fromDate) && DateTime.TryParse(fromDate, out var from))
+                {
+                    query = query.Where(x => x.Datetime.HasValue && x.Datetime.Value.Date >= from.Date);
+                }
+
+                if (!string.IsNullOrEmpty(toDate) && DateTime.TryParse(toDate, out var to))
+                {
+                    query = query.Where(x => x.Datetime.HasValue && x.Datetime.Value.Date <= to.Date);
+                }
+
+                var data = await query
+                    .OrderByDescending(x => x.Datetime)
+                    .ThenBy(x => x.Operation)
+                    .ToListAsync();
+
+                using (var workbook = new XLWorkbook())
+                {
+                    var ws = workbook.Worksheets.Add("DowntimeList");
+                    var currentRow = 1;
+
+                    // Font mặc định
+                    ws.Style.Font.FontName = "Times New Roman";
+                    ws.Style.Font.FontSize = 11;
+
+                    // Header
+                    string[] headers = { "#", "SVN Code", "Operation", "ISS Code", "Tên lỗi", "State", "Mô tả", "Thời gian", "Ước tính", "Ảnh" };
+                    for (int i = 0; i < headers.Length; i++)
+                    {
+                        var cell = ws.Cell(currentRow, i + 1);
+                        cell.Value = headers[i];
+                        cell.Style.Font.Bold = true;
+                        cell.Style.Fill.BackgroundColor = XLColor.FromTheme(XLThemeColor.Accent1, 0.5);
+                        cell.Style.Font.FontColor = XLColor.White;
+                        cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+                        cell.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+                    }
+
+                    const double rowHeight = 70;
+
+                    int rowIndex = 0;
+                    foreach (var item in data)
+                    {
+                        currentRow++;
+                        rowIndex++;
+                        ws.Row(currentRow).Height = rowHeight;
+
+                        ws.Cell(currentRow, 1).Value = rowIndex;
+                        ws.Cell(currentRow, 2).Value = item.SVNCode; // ✅ Sửa từ item.Code → item.SVNCode
+                        ws.Cell(currentRow, 3).Value = item.Operation;
+                        ws.Cell(currentRow, 4).Value = item.ISS_Code;
+                        ws.Cell(currentRow, 5).Value = item.ErrorName;
+                        ws.Cell(currentRow, 6).Value = item.State;
+                        ws.Cell(currentRow, 7).Value = item.Description;
+                        ws.Cell(currentRow, 8).Value = item.Datetime?.ToString("dd/MM/yyyy HH:mm") ?? "-";
+                        ws.Cell(currentRow, 9).Value = string.IsNullOrEmpty(item.EstimateTime) ? "-" : item.EstimateTime;
+
+                        // Xử lý ảnh
+                        if (!string.IsNullOrEmpty(item.Image))
+                        {
+                            try
+                            {
+                                string imagePath = "";
+                                if (item.Image.StartsWith("/uploads/"))
+                                {
+                                    imagePath = Path.Combine(_webHostEnvironment.WebRootPath, item.Image.TrimStart('/').Replace('/', Path.DirectorySeparatorChar));
+                                }
+                                else
+                                {
+                                    imagePath = item.Image;
+                                }
+
+                                if (System.IO.File.Exists(imagePath))
+                                {
+                                    var picture = ws.AddPicture(imagePath);
+                                    picture.MoveTo(ws.Cell(currentRow, 10), 8, 5);
+                                    picture.WithSize(100, 70);
+
+                                    var imageCell = ws.Cell(currentRow, 10);
+                                    imageCell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+                                    imageCell.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+                                }
+                                else
+                                {
+                                    ws.Cell(currentRow, 10).Value = "No image";
+                                    ws.Cell(currentRow, 10).Style.Font.FontColor = XLColor.Gray;
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                ws.Cell(currentRow, 10).Value = $"Error: {ex.Message}";
+                                ws.Cell(currentRow, 10).Style.Font.FontColor = XLColor.Red;
+                            }
+                        }
+                        else
+                        {
+                            ws.Cell(currentRow, 10).Value = "-";
+                            ws.Cell(currentRow, 10).Style.Font.FontColor = XLColor.Gray;
+                        }
+                    }
+
+                    // Styling
+                    ws.Columns(1, 9).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+                    ws.Columns(1, 9).Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+                    ws.Column(7).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Left; // Mô tả căn trái
+
+                    // Column widths
+                    ws.Column(1).Width = 8;
+                    ws.Column(2).Width = 15;
+                    ws.Column(3).Width = 20;
+                    ws.Column(4).Width = 15;
+                    ws.Column(5).Width = 25;
+                    ws.Column(6).Width = 12;
+                    ws.Column(7).Width = 30;
+                    ws.Column(8).Width = 18;
+                    ws.Column(9).Width = 15;
+                    ws.Column(10).Width = 15;
+
+                    using (var stream = new MemoryStream())
+                    {
+                        workbook.SaveAs(stream);
+                        return File(stream.ToArray(),
+                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            $"DowntimeList_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Lỗi ExportDowntimeListToExcel: {ex.Message}");
+                return Json(new { success = false, message = $"Lỗi xuất Excel: {ex.Message}" });
+            }
+        }
+
 
         // POST: /Downtime/Create
         [HttpPost]

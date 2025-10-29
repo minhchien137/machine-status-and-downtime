@@ -115,6 +115,10 @@
         <div style="display:flex;align-items:flex-end;gap:8px">
             <button type="submit" class="btn btn-primary">Lọc</button>
             <a class="btn btn-secondary" href="@Url.Action("DowntimeList", "Status")">Xoá lọc</a>
+            <a class="btn btn-success"
+                href="@Url.Action("ExportDowntimeListToExcel", "Status", new { operation = qOp, fromDate = qFrom, toDate = qTo })">
+                📥 Excel
+            </a>
         </div>
     </div>
 </form>
@@ -127,6 +131,7 @@
                 <th>SVN Code</th>
                 <th>Operation</th>
                 <th>ISS Code</th>
+                <th>Tên lỗi</th>
                 <th>State</th>
                 <th>Mô tả</th>
                 <th>Thời gian</th>
@@ -151,9 +156,10 @@
                     i++;
                     <tr>
                         <td>@i</td>
-                        <td>@item.Code</td>
+                        <td>@item.SVNCode</td>
                         <td>@item.Operation</td>
                         <td>@item.ISS_Code</td>
+                        <td>@item.ErrorName</td>
                         <td
                             class="@(string.Equals(item.State, "Stop", StringComparison.OrdinalIgnoreCase) ? "state-stop" : "state-run")">
                             @item.State</td>
