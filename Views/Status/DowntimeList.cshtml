@@ -1,0 +1,200 @@
+@model IEnumerable<MachineStatusUpdate.Models.SVN_Downtime_Info>
+@{
+    ViewData["Title"] = "Danh sách Downtime";
+    var ops = (IEnumerable<string>)ViewBag.OperationOptions ?? Enumerable.Empty<string>();
+    string qOp = ViewBag.Operation as string ?? "";
+    string qFrom = ViewBag.FromDate as string ?? "";
+    string qTo = ViewBag.ToDate as string ?? "";
+    int currentPage = ViewBag.CurrentPage ?? 1;
+    int totalPages = ViewBag.TotalPages ?? 0;
+    bool hasPrev = ViewBag.HasPreviousPage ?? false;
+    bool hasNext = ViewBag.HasNextPage ?? false;
+}
+
+<style>
+    .filter-bar {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 12px;
+        margin: 18px 0
+    }
+
+    .filter-bar .form-control,
+    .filter-bar select {
+        height: 40px
+    }
+
+    .btn {
+        border: 0;
+        border-radius: 10px;
+        padding: 10px 14px;
+        font-weight: 600;
+        cursor: pointer
+    }
+
+    .btn-primary {
+        background: #0d6efd;
+        color: #fff
+    }
+
+    .btn-secondary {
+        background: #e5e7eb;
+        color: #111827
+    }
+
+    .table-wrap {
+        overflow: auto;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        background: #fff;
+        box-shadow: 0 6px 18px rgba(0, 0, 0, .06)
+    }
+
+    table {
+        width: 100%;
+        border-collapse: collapse
+    }
+
+    th,
+    td {
+        border-bottom: 1px solid #f1f5f9;
+        padding: 10px 12px;
+        font-size: 14px
+    }
+
+    th {
+        background: #f8fafc;
+        font-weight: 700;
+        text-align: left
+    }
+
+    tr:hover {
+        background: #f1f9ff
+    }
+
+    .state-stop {
+        color: #ef4444;
+        font-weight: 600
+    }
+
+    .state-run {
+        color: #22c55e;
+        font-weight: 600
+    }
+
+    .pager {
+        display: flex;
+        gap: 8px;
+        justify-content: flex-end;
+        margin-top: 12px
+    }
+</style>
+
+<h2>📋 Danh sách Downtime</h2>
+
+<form method="get" asp-action="DowntimeList">
+    <div class="filter-bar">
+        <div>
+            <label>From</label>
+            <input type="date" name="fromDate" value="@qFrom" class="form-control" />
+        </div>
+        <div>
+            <label>To</label>
+            <input type="date" name="toDate" value="@qTo" class="form-control" />
+        </div>
+        <div>
+            <label>Operation</label>
+            <select name="operation" class="form-control">
+                <option value="">-- Tất cả --</option>
+                @foreach (var op in ops)
+                {
+                    <option value="@op" selected="@(op == qOp ? "selected" : null)">@op</option>
+                }
+            </select>
+        </div>
+        <div style="display:flex;align-items:flex-end;gap:8px">
+            <button type="submit" class="btn btn-primary">Lọc</button>
+            <a class="btn btn-secondary" href="@Url.Action("DowntimeList", "Status")">Xoá lọc</a>
+        </div>
+    </div>
+</form>
+
+<div class="table-wrap">
+    <table>
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>SVN Code</th>
+                <th>Operation</th>
+                <th>ISS Code</th>
+                <th>State</th>
+                <th>Mô tả</th>
+                <th>Thời gian</th>
+                <th>Ước tính</th>
+                <th>Ảnh</th>
+            </tr>
+        </thead>
+        <tbody>
+            @{
+                var i = (currentPage - 1) * (ViewBag.PageSize ?? 25);
+            }
+            @if (!Model.Any())
+            {
+                <tr>
+                    <td colspan="9" style="text-align:center;color:#6b7280">Không có dữ liệu</td>
+                </tr>
+            }
+            else
+            {
+                foreach (var item in Model)
+                {
+                    i++;
+                    <tr>
+                        <td>@i</td>
+                        <td>@item.Code</td>
+                        <td>@item.Operation</td>
+                        <td>@item.ISS_Code</td>
+                        <td
+                            class="@(string.Equals(item.State, "Stop", StringComparison.OrdinalIgnoreCase) ? "state-stop" : "state-run")">
+                            @item.State</td>
+                        <td>@item.Description</td>
+                        <td>@(item.Datetime?.ToString("dd/MM/yyyy HH:mm") ?? "-")</td>
+                        <td>@(string.IsNullOrEmpty(item.EstimateTime) ? "-" : item.EstimateTime)</td>
+                        <td>
+                            @if (!string.IsNullOrEmpty(item.Image))
+                            {
+                                <a href="@Url.Content(item.Image)" target="_blank">Xem ảnh</a>
+                            }
+                            else
+                            {
+
+                                <span>-</span>
+                            }
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table>
+</div>
+
+@if (totalPages > 1)
+{
+    <div class="pager">
+        @if (hasPrev)
+        {
+            <a class="btn btn-secondary"
+                href="@Url.Action("DowntimeList", new { operation = qOp, fromDate = qFrom, toDate = qTo, page = currentPage - 1, pageSize = ViewBag.PageSize })">
+                ← Trước
+            </a>
+        }
+        <div style="align-self:center">Trang @currentPage / @totalPages</div>
+        @if (hasNext)
+        {
+            <a class="btn btn-secondary"
+                href="@Url.Action("DowntimeList", new { operation = qOp, fromDate = qFrom, toDate = qTo, page = currentPage + 1, pageSize = ViewBag.PageSize })">
+                Sau →
+            </a>
+        }
+    </div>
+}

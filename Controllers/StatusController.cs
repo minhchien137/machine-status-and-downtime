@@ -1,10 +1,10 @@
-﻿using MachineStatusUpdate.Models;
-using Microsoft.AspNetCore.Mvc;
+﻿using System.Drawing;
 using ClosedXML.Excel;
-using Microsoft.EntityFrameworkCore;
-using System.Drawing;
-using ZXing;
+using MachineStatusUpdate.Models;
 using MachineStatusUpdate.Services;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using ZXing;
 
 
 namespace MachineStatusUpdate.Controllers
@@ -26,6 +26,237 @@ namespace MachineStatusUpdate.Controllers
             _statusUpdateService = statusUpdateService;
 
         }
+
+        [HttpGet]
+        public async Task<IActionResult> CreateDownTime()
+        {
+            var today = DateTime.Now.ToString("yyyyMMdd");
+            var ops = await _context.SVN_targets
+                .AsNoTracking()
+                .Where(x => x.Date_time == today && x.Operation != null && x.Operation != "")
+                .Select(x => x.Operation)
+                .Distinct()
+                .OrderBy(x => x)
+                .ToListAsync();
+
+            ViewBag.OperationOptions = ops;
+
+            var rea = await _context.SVN_Downtime_Reasons
+                .AsNoTracking()
+                .OrderBy(r => r.Reason_Name)
+                .Select(r => new { r.Reason_Code, r.Reason_Name })
+                .ToListAsync();
+
+            ViewBag.ReasonOptions = rea;
+            return View("CreateDownTime"); // <- chỉ rõ, khớp file .cshtml
+        }
+
+
+        [HttpGet]
+        public async Task<IActionResult> DowntimeList(
+    string operation = "",
+    string fromDate = "",
+    string toDate = "",
+    int page = 1,
+    int pageSize = 25)
+        {
+            try
+            {
+                var query = _context.SVN_Downtime_Infos.AsQueryable();
+
+                // ----- Filters -----
+                if (!string.IsNullOrWhiteSpace(operation))
+                {
+                    var op = operation.Trim();
+                    query = query.Where(x => x.Operation != null && x.Operation.Contains(op));
+                }
+
+                if (!string.IsNullOrEmpty(fromDate) && DateTime.TryParse(fromDate, out var from))
+                {
+                    query = query.Where(x => x.Datetime.HasValue && x.Datetime.Value.Date >= from.Date);
+                }
+
+                if (!string.IsNullOrEmpty(toDate) && DateTime.TryParse(toDate, out var to))
+                {
+                    query = query.Where(x => x.Datetime.HasValue && x.Datetime.Value.Date <= to.Date);
+                }
+
+                // ----- Pagination -----
+                var totalRecords = await query.CountAsync();
+                var results = await query
+                    .OrderByDescending(x => x.Datetime)
+                    .ThenBy(x => x.Operation)
+                    .Skip((page - 1) * pageSize)
+                    .Take(pageSize)
+                    .AsNoTracking()
+                    .ToListAsync();
+
+                var totalPages = (int)Math.Ceiling((double)totalRecords / pageSize);
+
+                // Distinct operations cho dropdown filter
+                ViewBag.OperationOptions = await _context.SVN_Downtime_Infos
+                    .Where(x => x.Operation != null && x.Operation != "")
+                    .Select(x => x.Operation!)
+                    .Distinct()
+                    .OrderBy(x => x)
+                    .ToListAsync();
+
+                // Pass filter & pagination to View
+                ViewBag.Operation = operation ?? "";
+                ViewBag.FromDate = fromDate ?? "";
+                ViewBag.ToDate = toDate ?? "";
+                ViewBag.CurrentPage = page;
+                ViewBag.TotalPages = totalPages;
+                ViewBag.PageSize = pageSize;
+                ViewBag.TotalRecords = totalRecords;
+                ViewBag.HasPreviousPage = page > 1;
+                ViewBag.HasNextPage = page < totalPages;
+
+                return View(results);
+            }
+            catch (Exception ex)
+            {
+                ViewBag.ErrorMessage = $"Lỗi: {ex.Message}";
+                // Defaults khi lỗi
+                ViewBag.Operation = operation ?? "";
+                ViewBag.FromDate = fromDate ?? "";
+                ViewBag.ToDate = toDate ?? "";
+                ViewBag.CurrentPage = 1;
+                ViewBag.TotalPages = 0;
+                ViewBag.PageSize = pageSize;
+                ViewBag.TotalRecords = 0;
+                ViewBag.HasPreviousPage = false;
+                ViewBag.HasNextPage = false;
+
+                return View(new List<SVN_Downtime_Info>());
+            }
+        }
+
+        // POST: /Downtime/Create
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> CreateDownTime(SVN_Downtime_Info model, IFormFile? imageFile)
+        {
+            // ===== 1) Chuẩn hoá/điền mặc định =====
+            // Fallback nếu phía client lỡ gửi "SVnCode"
+            if (string.IsNullOrWhiteSpace(model.Code))
+            {
+                // var alt = Request?.Form?["SVnCode"].ToString();
+                // if (!string.IsNullOrWhiteSpace(alt)) model.Code = alt;
+                model.Code = model.Operation ?? string.Empty;
+
+            }
+
+            // Nếu chưa có Name thì đặt theo Operation để không null
+            if (string.IsNullOrWhiteSpace(model.Name))
+                model.Name = model.Operation ?? string.Empty;
+
+            // Dùng thời gian người dùng chọn, nếu trống thì Now (như logic cũ)
+            if (!model.Datetime.HasValue || model.Datetime.Value == default)
+                model.Datetime = DateTime.Now;
+
+            if (string.IsNullOrWhiteSpace(model.EstimateTime))
+                model.EstimateTime = string.Empty;
+
+            if (string.IsNullOrWhiteSpace(model.Description))
+                model.Description = string.Empty;
+
+            // ===== 2) Xử lý upload ảnh (tuỳ chọn) =====
+            string imagePath = string.Empty;
+            if (imageFile != null && imageFile.Length > 0)
+            {
+                var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".gif", ".bmp" };
+                var ext = Path.GetExtension(imageFile.FileName).ToLowerInvariant();
+
+                if (!allowedExtensions.Contains(ext))
+                    return Json(new { success = false, message = "Chỉ cho phép upload ảnh: jpg, jpeg, png, gif, bmp" });
+
+                if (imageFile.Length > 5 * 1024 * 1024)
+                    return Json(new { success = false, message = "Kích thước ảnh không được vượt quá 5MB" });
+
+                var uploadsFolder = Path.Combine(_webHostEnvironment.WebRootPath, "uploads", "status-images");
+                if (!Directory.Exists(uploadsFolder))
+                    Directory.CreateDirectory(uploadsFolder);
+
+                var fileName = $"{DateTime.Now:yyyyMMdd_HHmmss}_{Guid.NewGuid():N}{ext}";
+                var filePath = Path.Combine(uploadsFolder, fileName);
+
+                using (var stream = new FileStream(filePath, FileMode.Create))
+                {
+                    await imageFile.CopyToAsync(stream);
+                }
+
+                imagePath = $"/uploads/status-images/{fileName}";
+            }
+
+            model.Image = imagePath; // model có trường Image để lưu đường dẫn ảnh
+
+            // ===== 3) Validate ModelState & Lưu DB =====
+            if (!ModelState.IsValid)
+            {
+                await RefillOpsForToday();
+                await RefillReasonsAsync();
+                TempData["Error"] = "Dữ liệu không hợp lệ!";
+                return View("CreateDownTime", model);
+            }
+
+            _context.SVN_Downtime_Infos.Add(model);
+            await _context.SaveChangesAsync();
+
+            // ===== 4) Trả JSON cho AJAX (giống kiểu cũ) =====
+            return Json(new { success = true, message = "Đã lưu downtime!" });
+        }
+
+        private async Task RefillReasonsAsync()
+        {
+            ViewBag.ReasonOptions = await _context.SVN_Downtime_Reasons
+                .AsNoTracking()
+                .OrderBy(r => r.Reason_Name)
+                .Select(r => new { r.Reason_Code, r.Reason_Name })
+                .ToListAsync();
+        }
+
+        private async Task RefillOpsForToday()
+        {
+            var today = DateTime.Now.ToString("yyyyMMdd");
+            ViewBag.OperationOptions = await _context.SVN_targets
+                .AsNoTracking()
+                .Where(x => x.Date_time == today && x.Operation != null && x.Operation != "")
+                .Select(x => x.Operation)
+                .Distinct()
+                .OrderBy(x => x)
+                .ToListAsync();
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> GetLatestDowntimeForOperation(string operation)
+        {
+            if (string.IsNullOrWhiteSpace(operation))
+                return Json(new { exists = false });
+
+            var op = operation.Trim();
+            var today = DateTime.Now.Date;
+
+            var latest = await _context.SVN_Downtime_Infos
+                .Where(x => x.Operation != null
+                            && x.Operation.Trim() == op
+                            && x.Datetime.HasValue
+                            && x.Datetime.Value.Date == today)
+                .OrderByDescending(x => x.Datetime)
+                .Select(x => new
+                {
+                    state = (x.State ?? "").Trim(),
+                    ISS_Code = (x.ISS_Code ?? "").Trim()
+                })
+                .FirstOrDefaultAsync();
+
+            if (latest == null)
+                return Json(new { exists = false });
+
+            return Json(new { exists = true, state = latest.state, ISSCode = latest.ISS_Code });
+        }
+
+
 
 
         [HttpGet]

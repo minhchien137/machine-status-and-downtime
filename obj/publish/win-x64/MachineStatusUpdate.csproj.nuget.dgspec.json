@@ -1,23 +1,23 @@
 {
   "format": 1,
   "restore": {
-    "D:\\MachineStatusUpdate\\MachineStatusUpdate\\MachineStatusUpdate.csproj": {}
+    "D:\\Sigma\\MachineStatusUpdate\\MachineStatusUpdate.csproj": {}
   },
   "projects": {
-    "D:\\MachineStatusUpdate\\MachineStatusUpdate\\MachineStatusUpdate.csproj": {
+    "D:\\Sigma\\MachineStatusUpdate\\MachineStatusUpdate.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "D:\\MachineStatusUpdate\\MachineStatusUpdate\\MachineStatusUpdate.csproj",
+        "projectUniqueName": "D:\\Sigma\\MachineStatusUpdate\\MachineStatusUpdate.csproj",
         "projectName": "MachineStatusUpdate",
-        "projectPath": "D:\\MachineStatusUpdate\\MachineStatusUpdate\\MachineStatusUpdate.csproj",
-        "packagesPath": "C:\\Users\\sigma-chien\\.nuget\\packages\\",
-        "outputPath": "D:\\MachineStatusUpdate\\MachineStatusUpdate\\obj\\publish\\win-x64\\",
+        "projectPath": "D:\\Sigma\\MachineStatusUpdate\\MachineStatusUpdate.csproj",
+        "packagesPath": "C:\\Users\\sigma-it-paul\\.nuget\\packages\\",
+        "outputPath": "D:\\Sigma\\MachineStatusUpdate\\obj\\publish\\win-x64\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
         ],
         "configFilePaths": [
-          "C:\\Users\\sigma-chien\\AppData\\Roaming\\NuGet\\NuGet.Config",
+          "C:\\Users\\sigma-it-paul\\AppData\\Roaming\\NuGet\\NuGet.Config",
           "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
           "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
         ],
@@ -26,7 +26,6 @@
         ],
         "sources": {
           "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
-          "C:\\Program Files\\dotnet\\library-packs": {},
           "https://api.nuget.org/v3/index.json": {}
         },
         "frameworks": {
